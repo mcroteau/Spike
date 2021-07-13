@@ -1,0 +1,9 @@
+drop table if exists user_roles;
+drop table if exists user_permissions;
+drop table if exists song_downloads;
+drop table if exists song_plays;
+drop table if exists song_likes;
+drop table if exists songs;
+drop table if exists genres;
+drop table if exists users;
+drop table if exists roles;
