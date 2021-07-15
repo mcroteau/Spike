@@ -1,1 +1,0 @@
-<p style="font-size:19px;">Password reset email has been sent.</p>
