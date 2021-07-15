@@ -27,19 +27,27 @@ import java.util.jar.JarFile;
 import java.util.logging.Logger;
 
 public class SPiKE {
+
+    private Loader loader;
+
     Logger logger = Logger.getLogger("SPiKE");
 
     protected Boolean shutdown = false;
+
+    List<Object> startupEvents = new ArrayList<>();
 
     public static void main(String[] args)  {
         SPiKE spike = new SPiKE();
         spike.loadDependencies(0);
         spike.dispatchStartup();
         spike.parseWebXmls();
+
         spike.await();
     }
 
     public void await() {
+
+
         ServerSocket serverSocket = null;
         int port = 8080;
         try {
@@ -99,7 +107,7 @@ public class SPiKE {
                         System.out.println(entry.getKey());
                     }
 
-                    Object servlet = (Object)routes.get(route);
+                    Object servlet = routes.get(route);
 
                     System.out.println(servlet);
 
@@ -186,14 +194,15 @@ public class SPiKE {
         }
     }
 
-    ClassLoader addUrlThis = ClassLoader.getSystemClassLoader();
-
     Map<String, Object> routes = new HashMap<>();
     Map<String, Object> servlets = new HashMap<>();
 
     protected void parseWebXmls() {
         try {
-            String dir = new File("").getAbsolutePath();
+
+            //java.net.FactoryURLClassLoader@3551a94
+            //jdk.internal.loader.ClassLoaders$AppClassLoader@277050dc
+
             String webXmlDir = getProjectPath().concat(File.separator)
                     .concat("WEB-INF").concat(File.separator).concat("web.xml");
             File webXml = new File(webXmlDir);
@@ -229,7 +238,7 @@ public class SPiKE {
                             String servletRoute = mappingEl.getElementsByTagName("url-pattern").item(0).getTextContent();
 
                             if (servletName.equals(servletElName)) {
-                                Class clacc = cl.loadClass(servletClass);
+                                Class clacc = loader.loadClass(servletClass);
 
                                 Constructor[] constructors = clacc.getConstructors();
                                 for (Constructor constructor : constructors) {
@@ -250,7 +259,6 @@ public class SPiKE {
         }
     }
 
-    Loader loader;
 
     Map<String, Boolean> names = new HashMap<>();
     protected void loadDependencies(int q) {
@@ -341,11 +349,6 @@ public class SPiKE {
         }
 
 
-
-        cl = URLClassLoader.newInstance(jarUrls);
-
-
-
         for(String name : classNames){
             names.put(name, true);
         }
@@ -358,6 +361,8 @@ public class SPiKE {
         }
 
         loader = new Loader(jarUrls);
+        Thread.currentThread().setContextClassLoader(loader);
+        System.out.println(loader);
 
 
 //        URLClassLoader loader = (URLClassLoader) this.getClass().getClassLoader();
@@ -390,54 +395,17 @@ public class SPiKE {
             }
         }
         System.out.println("load classes....");
-        load(idx, classNamesFinal);
-    }
-
-    int idx = 0;
-    List<String> processed = new ArrayList<>();
-    protected void load(int idx, List<String> classNamesFinal){
-
-
-            for (int z = idx; z < classNamesFinal.size(); z++) {
-                String classpath = classNamesFinal.get(z);
-                if (!classpath.equals("module-info")) {
-
-                    try {
-                        if(!processed.contains(classpath)) {
-                            addUrlThis.loadClass(classpath);
-                            //                    Class<?> clazz = Class.forName(classpath, true, ucl);
-                            //                    Constructor<?> constructor = clazz.getConstructor();
-                            //                    constructor.newInstance();
-                            processed.add(classpath);
-                        }
-                    }catch(Exception ex){
-                            processed.add(classpath);
-                        if(processed.size()< classNamesFinal.size()){
-                            load(idx + 1, classNamesFinal);
-                        }
-                    }
-                }
-            }
     }
 
     protected String getProjectPath(){
         return new File("")
                 .getAbsolutePath()
                 .concat(File.separator)
+                .concat("webapps")
+                .concat(File.separator)
                 .concat("z");
     }
 
-    public void addToClassPath(File jarFile) throws Exception {
-        addUrlThis = ClassLoader.getSystemClassLoader();
-
-        Method addUrlMethod = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
-        addUrlMethod.setAccessible(true);
-        addUrlMethod.invoke(addUrlThis, jarFile.toURI().toURL());
-    }
-
-
-    URLClassLoader cl;
-    ClassLoader pcl = ClassLoader.getSystemClassLoader();
 
     protected void dispatchStartup(){
 
@@ -450,6 +418,19 @@ public class SPiKE {
         File folder = new File(projectPath);
         File[] folderFiles = folder.listFiles();
         traverseDispatch(folderFiles);
+
+        try {
+            ServletContext context = new HttpContext();
+            ServletContextEvent sce = new ServletContextEvent(context);
+
+            for (Object obj : startupEvents) {
+                Method invoke = obj.getClass().getMethod("contextInitialized", ServletContextEvent.class);
+                invoke.invoke(obj, sce);
+            }
+        }catch(Exception ex){
+            ex.printStackTrace();
+        }
+
     }
 
     protected void traverseDispatch(File[] folderFiles){
@@ -462,7 +443,8 @@ public class SPiKE {
 
             try {
                 if (file.getName().endsWith(".class")) {
-
+                    ///Users/mcroteau/Development/Projects/SPiKE/webapps/z/WEB-INF/classes
+                    ///Users/mcroteau/Development/Projects/SPiKE/webapps/z/WEB-INF/classes
                     URL url = getUrlPath(file);
 
 //                    url = new URL("/Users/mcroteau/Development/Projects/SPiKE/z/WEB-INF/classes/io/support/StartupListener.class");
@@ -475,12 +457,8 @@ public class SPiKE {
 
                     Class cls = loader.loadClass(getClassName(file));
                     if(cls.isAnnotationPresent(WebListener.class)){
-                        ServletContext context = new HttpContext();
-                        ServletContextEvent sce = new ServletContextEvent(context);
-                        System.out.println("here..." + cls);
                         Object obj = cls.getConstructor().newInstance();
-                        Method invoke = obj.getClass().getMethod("contextInitialized", ServletContextEvent.class);
-                        invoke.invoke(obj, sce);
+                        startupEvents.add(obj);
                     }
                 }
             }catch(ClassNotFoundException ex){

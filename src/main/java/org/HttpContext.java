@@ -14,7 +14,7 @@ public class HttpContext implements ServletContext {
 
     @Override
     public String getContextPath() {
-        return "/z";
+        return "z";
     }
 
     @Override
